@@ -1,0 +1,42 @@
+{
+  "name": "lighter-ts",
+  "version": "1.0.0",
+  "description": "TypeScript SDK for Lighter perp trading platform contract interactions",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "lint": "eslint src/**/*.ts",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "lighter",
+    "trading",
+    "perpetual",
+    "defi",
+    "typescript",
+    "sdk"
+  ],
+  "author": "Lighter Team",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "ethers": "^6.8.0",
+    "crypto": "^1.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0",
+    "@typescript-eslint/eslint-plugin": "^6.9.0",
+    "@typescript-eslint/parser": "^6.9.0",
+    "eslint": "^8.52.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.2.2"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md"
+  ]
+}
