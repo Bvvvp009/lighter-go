@@ -911,6 +911,10 @@ func SignUpdateLeverage(cMarketIndex C.int, cInitialMarginFraction C.int, cMargi
 	return
 }
 
+// CreateAuthToken Note: in order for the deadline to be valid, it needs to be at most 8 hours from now.
+// It's recommended that it'd be at most 7:55, as differences in clock times could make this
+// invalid. Still, this endpoint does not enforce that so users can generate the auth tokens in advance.
+
 //export CreateAuthToken
 func CreateAuthToken(cDeadline C.longlong) (ret C.StrOrErr) {
 	var err error
