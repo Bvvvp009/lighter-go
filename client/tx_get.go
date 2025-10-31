@@ -2,11 +2,20 @@ package client
 
 import (
 	"fmt"
+	"time"
+
+	schnorr "github.com/elliottech/poseidon_crypto/signature/schnorr"
 
 	"github.com/elliottech/lighter-go/types"
 	"github.com/elliottech/lighter-go/types/txtypes"
-	schnorr "github.com/elliottech/poseidon_crypto/signature/schnorr"
 )
+
+func (c *TxClient) GetAuthToken(deadline time.Time) (string, error) {
+	return types.ConstructAuthToken(c.keyManager, deadline, &types.TransactOpts{
+		ApiKeyIndex:      &c.apiKeyIndex,
+		FromAccountIndex: &c.accountIndex,
+	})
+}
 
 func (c *TxClient) GetChangePubKeyTransaction(tx *types.ChangePubKeyReq, ops *types.TransactOpts) (*txtypes.L2ChangePubKeyTxInfo, error) {
 	ops, err := c.FullFillDefaultOps(ops)
@@ -101,6 +110,18 @@ func (c *TxClient) GetCreateOrderTransaction(tx *types.CreateOrderTxReq, ops *ty
 	return txInfo, nil
 }
 
+func (c *TxClient) GetCreateGroupedOrdersTransaction(tx *types.CreateGroupedOrdersTxReq, ops *types.TransactOpts) (*txtypes.L2CreateGroupedOrdersTxInfo, error) {
+	ops, err := c.FullFillDefaultOps(ops)
+	if err != nil {
+		return nil, err
+	}
+	txInfo, err := types.ConstructL2CreateGroupedOrdersTx(c.keyManager, c.chainId, tx, ops)
+	if err != nil {
+		return nil, err
+	}
+	return txInfo, nil
+}
+
 func (c *TxClient) GetCancelOrderTransaction(tx *types.CancelOrderTxReq, ops *types.TransactOpts) (*txtypes.L2CancelOrderTxInfo, error) {
 	ops, err := c.FullFillDefaultOps(ops)
 	if err != nil {
@@ -176,14 +197,10 @@ func (c *TxClient) GetUpdateLeverageTransaction(tx *types.UpdateLeverageTxReq, o
 }
 
 func (c *TxClient) GetUpdateMarginTransaction(tx *types.UpdateMarginTxReq, ops *types.TransactOpts) (*txtypes.L2UpdateMarginTxInfo, error) {
-	if c.keyManager == nil {
-		return nil, fmt.Errorf("key manager is nil")
+	ops, err := c.FullFillDefaultOps(ops)
+	if err != nil {
+		return nil, err
 	}
-
-	if ops == nil {
-		ops = new(types.TransactOpts)
-	}
-
 	txInfo, err := types.ConstructUpdateMarginTx(c.keyManager, c.chainId, tx, ops)
 	if err != nil {
 		return nil, err

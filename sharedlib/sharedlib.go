@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/elliottech/lighter-go/client"
+	"github.com/elliottech/lighter-go/client/http"
 	"github.com/elliottech/lighter-go/types"
 	curve "github.com/elliottech/poseidon_crypto/curve/ecgfp5"
 	schnorr "github.com/elliottech/poseidon_crypto/signature/schnorr"
@@ -15,6 +17,7 @@ import (
 
 /*
 #include <stdlib.h>
+#include <stdint.h>
 typedef struct {
 	char* str;
 	char* err;
@@ -25,6 +28,19 @@ typedef struct {
 	char* publicKey;
 	char* err;
 } ApiKeyResponse;
+
+typedef struct {
+    uint8_t MarketIndex;
+    int64_t ClientOrderIndex;
+    int64_t BaseAmount;
+    uint32_t Price;
+    uint8_t IsAsk;
+    uint8_t Type;
+    uint8_t TimeInForce;
+    uint8_t ReduceOnly;
+    uint32_t TriggerPrice;
+    int64_t OrderExpiry;
+} CreateOrderTxReq;
 */
 import "C"
 
@@ -96,7 +112,7 @@ func CreateClient(cUrl *C.char, cPrivateKey *C.char, cChainId C.int, cApiKeyInde
 		return
 	}
 
-	httpClient := client.NewHTTPClient(url)
+	httpClient := http.NewClient(url)
 	txClient, err = client.NewTxClient(httpClient, privateKey, accountIndex, apiKeyIndex, chainId)
 	if err != nil {
 		err = fmt.Errorf("error occurred when creating TxClient. err: %v", err)
@@ -141,7 +157,7 @@ func CheckClient(cApiKeyIndex C.int, cAccountIndex C.longlong) (ret *C.char) {
 	}
 
 	// check that the API key registered on Lighter matches this one
-	key, err := client.HTTP().GetApiKey(accountIndex, apiKeyIndex)
+	publicKey, err := client.HTTP().GetApiKey(accountIndex, apiKeyIndex)
 	if err != nil {
 		err = fmt.Errorf("failed to get Api Keys. err: %v", err)
 		return
@@ -151,9 +167,8 @@ func CheckClient(cApiKeyIndex C.int, cAccountIndex C.longlong) (ret *C.char) {
 	pubKeyStr := hexutil.Encode(pubKeyBytes[:])
 	pubKeyStr = strings.Replace(pubKeyStr, "0x", "", 1)
 
-	ak := key.ApiKeys[0]
-	if ak.PublicKey != pubKeyStr {
-		err = fmt.Errorf("private key does not match the one on Lighter. ownPubKey: %s response: %+v", pubKeyStr, ak)
+	if publicKey != pubKeyStr {
+		err = fmt.Errorf("private key does not match the one on Lighter. ownPubKey: %s response: %+v", pubKeyStr, publicKey)
 		return
 	}
 
@@ -304,6 +319,82 @@ func SignCreateOrder(cMarketIndex C.int, cClientOrderIndex C.longlong, cBaseAmou
 	}
 
 	txInfoBytes, err := json.Marshal(tx)
+	if err != nil {
+		return
+	}
+
+	txInfoStr = string(txInfoBytes)
+	return
+}
+
+//export SignCreateGroupedOrders
+func SignCreateGroupedOrders(cGroupingType C.uint8_t, cOrders *C.CreateOrderTxReq, cLen C.int, cNonce C.longlong) (ret C.StrOrErr) {
+	var err error
+	var txInfoStr string
+
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%v", r)
+		}
+		if err != nil {
+			ret = C.StrOrErr{
+				err: wrapErr(err),
+			}
+		} else {
+			ret = C.StrOrErr{
+				str: C.CString(txInfoStr),
+			}
+		}
+	}()
+
+	if txClient == nil {
+		err = fmt.Errorf("client is not created, call CreateClient() first")
+		return
+	}
+
+	length := int(cLen)
+	orders := make([]*types.CreateOrderTxReq, length)
+	size := unsafe.Sizeof(*cOrders)
+	nonce := int64(cNonce)
+
+	for i := 0; i < length; i++ {
+		order := (*C.CreateOrderTxReq)(unsafe.Pointer(uintptr(unsafe.Pointer(cOrders)) + uintptr(i)*uintptr(size)))
+
+		orderExpiry := int64(order.OrderExpiry)
+		if orderExpiry == -1 {
+			orderExpiry = time.Now().Add(time.Hour * 24 * 28).UnixMilli()
+		}
+
+		orders[i] = &types.CreateOrderTxReq{
+			MarketIndex:      uint8(order.MarketIndex),
+			ClientOrderIndex: int64(order.ClientOrderIndex),
+			BaseAmount:       int64(order.BaseAmount),
+			Price:            uint32(order.Price),
+			IsAsk:            uint8(order.IsAsk),
+			Type:             uint8(order.Type),
+			TimeInForce:      uint8(order.TimeInForce),
+			ReduceOnly:       uint8(order.ReduceOnly),
+			TriggerPrice:     uint32(order.TriggerPrice),
+			OrderExpiry:      orderExpiry,
+		}
+	}
+
+	req := &types.CreateGroupedOrdersTxReq{
+		GroupingType: uint8(cGroupingType),
+		Orders:       orders,
+	}
+
+	ops := new(types.TransactOpts)
+	if nonce != -1 {
+		ops.Nonce = &nonce
+	}
+
+	txInfo, err := txClient.GetCreateGroupedOrdersTransaction(req, ops)
+	if err != nil {
+		return
+	}
+
+	txInfoBytes, err := json.Marshal(txInfo)
 	if err != nil {
 		return
 	}
@@ -1012,8 +1103,14 @@ func SignUpdateMargin(cMarketIndex C.int, cUSDCAmount C.longlong, cDirection C.i
 	}
 
 	tx, err := txClient.GetUpdateMarginTransaction(txInfo, ops)
+	if err != nil {
+		return
+	}
 
 	txInfoBytes, err := json.Marshal(tx)
+	if err != nil {
+		return
+	}
 	txInfoStr = string(txInfoBytes)
 
 	return ret
